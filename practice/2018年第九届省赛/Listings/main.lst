@@ -1,0 +1,404 @@
+C51 COMPILER V9.54   MAIN                                                                  01/11/2023 22:09:50 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\main
+                    -.lst) TABS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          
+   2          //PWM控制LED在占空比小于100的情况下会闪，可尝试将一个周期分成的份数减小
+   3          //本次实验中，一个周期分成100份，PWM控制LED一直闪，久久之后，尝试将一个周�
+             -�分成20份，才解决问题
+   4          
+   5          #include "iic.h"
+   6          #include <STC15F2K60S2.H>
+   7          #include "absacc.h"
+   8          
+   9          unsigned char LED_Level = 1 , Nixie_State = 0 , LED_State = 1 , Move_Flag = 0 , count_t1 = 0 , LED_Lock = 
+             -0 , LED_Dat , stat = 0;
+  10          unsigned int LED_t = 400 , count_t0 = 0 ;
+  11          code unsigned char duanma_Nixie[] = {0x3F,0x06,0x5B,0x4F,0x66,0x6D,0x7D,0x07,0x7F,0x6F,0x77,0x7C,0x39,0x5E
+             -,0x79,0x71};
+  12          
+  13          /******************************************************************
+  14                                       函数声明
+  15          ******************************************************************/
+  16          void InitSystem();
+  17          void delay();
+  18          void Display_Bit_Nixie(unsigned char pos , unsigned char dat);
+  19          void Write_E2PROM(unsigned char dat);
+  20          unsigned char Read_E2PROM();
+  21          unsigned char Read_PCF8591();
+  22          void Display_Nixie();
+  23          void LED_Working();
+  24          void Judgment_LED_Level();
+  25          /******************************************************************/
+  26          
+  27          void InitSystem()
+  28          {
+  29   1        XBYTE[0x8000] = 0xff;
+  30   1        XBYTE[0xa000] = 0x00;
+  31   1        XBYTE[0xc000] = 0xff;
+  32   1        XBYTE[0xe000] = 0xff;
+  33   1      }
+  34          
+  35          void delay(unsigned int t)
+  36          {
+  37   1        while(t--);
+  38   1      }
+  39          
+  40          void Display_Bit_Nixie(unsigned char pos , unsigned char dat)
+  41          {
+  42   1        XBYTE[0xe000] = 0xff;
+  43   1        XBYTE[0xc000] = 0x01 << pos;
+  44   1        XBYTE[0xe000] = dat;
+  45   1      }
+  46          
+  47          void Write_E2PROM(unsigned char dat)
+  48          {
+  49   1        IIC_Start(); 
+  50   1        IIC_SendByte(0xa0);
+  51   1        IIC_WaitAck();
+C51 COMPILER V9.54   MAIN                                                                  01/11/2023 22:09:50 PAGE 2   
+
+  52   1        IIC_SendByte(0x01);
+  53   1        IIC_WaitAck();
+  54   1        IIC_SendByte(dat);
+  55   1        IIC_WaitAck();
+  56   1        IIC_Stop();
+  57   1      }
+  58          
+  59          unsigned char Read_E2PROM()
+  60          {
+  61   1        unsigned char dat;
+  62   1        
+  63   1        IIC_Start(); 
+  64   1        IIC_SendByte(0xa0);
+  65   1        IIC_WaitAck();
+  66   1        IIC_SendByte(0x01);
+  67   1        IIC_WaitAck();
+  68   1      
+  69   1        IIC_Start(); 
+  70   1        IIC_SendByte(0xa1);
+  71   1        IIC_WaitAck();
+  72   1        dat = IIC_RecByte();
+  73   1        IIC_SendAck(1); 
+  74   1        IIC_Stop();
+  75   1        
+  76   1        return dat;
+  77   1      }
+  78          
+  79          /**************************************************
+  80                          数码管显示内容
+  81          **************************************************/
+  82          void Display_Nixie()
+  83          {
+  84   1        if(Nixie_State == 0)     //数码管不显示
+  85   1        {
+  86   2          XBYTE[0xc000] = 0xff;
+  87   2          XBYTE[0xe000] = 0xff;
+  88   2        }
+  89   1        else if(Nixie_State == 1)  //数码管进入"流转间隔"设置界面
+  90   1        {
+  91   2          Display_Bit_Nixie(0 , 0xbf);
+  92   2          delay(100);
+  93   2          Display_Bit_Nixie(1 , ~duanma_Nixie[LED_State]);
+  94   2          delay(100);
+  95   2          Display_Bit_Nixie(2 , 0xbf);
+  96   2          delay(100);
+  97   2          Display_Bit_Nixie(3 , 0xff);
+  98   2          delay(100);
+  99   2          if(LED_t > 999)
+ 100   2          {
+ 101   3            Display_Bit_Nixie(4 , ~duanma_Nixie[LED_t / 1000]);
+ 102   3            delay(100);
+ 103   3          }
+ 104   2          if(LED_t > 99)
+ 105   2          {
+ 106   3            Display_Bit_Nixie(5 , ~duanma_Nixie[(LED_t % 1000) / 100]);
+ 107   3            delay(100);
+ 108   3          }
+ 109   2          if(LED_t > 9)
+ 110   2          {
+ 111   3            Display_Bit_Nixie(6 , ~duanma_Nixie[(LED_t % 100) / 10]);
+ 112   3            delay(100);
+ 113   3          }
+C51 COMPILER V9.54   MAIN                                                                  01/11/2023 22:09:50 PAGE 3   
+
+ 114   2          Display_Bit_Nixie(7 , ~duanma_Nixie[LED_t % 10]);
+ 115   2          delay(100);
+ 116   2        }
+ 117   1        else if(Nixie_State == 2)                                  //数码管显示指示灯当前的亮度等�
+             -�
+ 118   1        {
+ 119   2          Display_Bit_Nixie(6 , 0xbf);
+ 120   2          delay(100);
+ 121   2          Display_Bit_Nixie(7 , ~duanma_Nixie[LED_Level]);
+ 122   2          delay(100);
+ 123   2        }
+ 124   1        XBYTE[0xc000] = 0xff; //消影
+ 125   1        XBYTE[0xe000] = 0xff;
+ 126   1      }
+ 127          
+ 128          unsigned char Read_PCF8591()
+ 129          {
+ 130   1        unsigned char dat;
+ 131   1        
+ 132   1        IIC_Start(); 
+ 133   1        IIC_SendByte(0x90);
+ 134   1        IIC_WaitAck();
+ 135   1        IIC_SendByte(0x03);
+ 136   1        IIC_WaitAck();
+ 137   1        IIC_Stop();
+ 138   1      
+ 139   1        IIC_Start(); 
+ 140   1        IIC_SendByte(0x91);
+ 141   1        IIC_WaitAck();
+ 142   1        dat = IIC_RecByte();
+ 143   1        IIC_SendAck(1); 
+ 144   1        IIC_Stop();
+ 145   1        
+ 146   1        return dat;
+ 147   1      }
+ 148          
+ 149          /*********************************************
+ 150                利用定时器0控制LED流转间隔时间
+ 151          **********************************************/
+ 152          void Timer0Init()   //1毫秒@11.0592MHz
+ 153          {
+ 154   1        AUXR |= 0x80;   //定时器时钟1T模式
+ 155   1        TMOD &= 0xF0;   //设置定时器模式
+ 156   1        TMOD |= 0x01;   //设置定时器模式
+ 157   1        TL0 = 0xCD;   //设置定时初值
+ 158   1        TH0 = 0xD4;   //设置定时初值
+ 159   1        TR0 = 1;    //定时器0开始计时              /***************************/
+ 160   1        EA = 1;                                    /****这里不能加上TR1 = 1****/
+ 161   1        ET0 = 1;                                   /***************************/
+ 162   1        ET1 = 1;
+ 163   1      }
+ 164          
+ 165          void Timer0_Routine() interrupt 1
+ 166          {
+ 167   1        TL0 = 0xCD;
+ 168   1        TH0 = 0xD4; 
+ 169   1        if(!LED_Lock)
+ 170   1        {
+ 171   2          count_t0++;
+ 172   2          if(count_t0 >= LED_t)
+ 173   2          {
+ 174   3            stat++;
+C51 COMPILER V9.54   MAIN                                                                  01/11/2023 22:09:50 PAGE 4   
+
+ 175   3            count_t0 = 0;
+ 176   3          }
+ 177   2          if(stat == 25)
+ 178   2            stat = 0;
+ 179   2        }
+ 180   1      }
+ 181                                                                       /*********************************/
+ 182          void LED_Working()       //                                  /需使用这种形式才可用pwm信号来�
+             -�制/
+ 183          {                                                            /*********************************/
+ 184   1        switch(stat)
+ 185   1        {
+ 186   2          case 0 : LED_Dat = 0xff;XBYTE[0x8000] = LED_Dat;break;
+ 187   2          case 1 : LED_Dat = ~(0x01 << 0);break;
+ 188   2          case 2 : LED_Dat = ~(0x01 << 1);break;
+ 189   2          case 3 : LED_Dat = ~(0x01 << 2);break;
+ 190   2          case 4 : LED_Dat = ~(0x01 << 3);break;
+ 191   2          case 5 : LED_Dat = ~(0x01 << 4);break;
+ 192   2          case 6 : LED_Dat = ~(0x01 << 5);break;
+ 193   2          case 7 : LED_Dat = ~(0x01 << 6);break;
+ 194   2          case 8 : LED_Dat = ~(0x01 << 7);break;
+ 195   2          case 9 : LED_Dat = ~(0x80 >> 0);break;
+ 196   2          case 10 : LED_Dat = ~(0x80 >> 1);break;
+ 197   2          case 11 : LED_Dat = ~(0x80 >> 2);break;
+ 198   2          case 12 : LED_Dat = ~(0x80 >> 3);break;
+ 199   2          case 13 : LED_Dat = ~(0x80 >> 4);break;
+ 200   2          case 14 : LED_Dat = ~(0x80 >> 5);break;
+ 201   2          case 15 : LED_Dat = ~(0x80 >> 6);break;
+ 202   2          case 16 : LED_Dat = ~(0x80 >> 7);break;
+ 203   2          case 17 : LED_Dat = ~((0x80 >> 0) | (0x01 << 0));break;
+ 204   2          case 18 : LED_Dat = ~((0x80 >> 1) | (0x01 << 1));break;
+ 205   2          case 19 : LED_Dat = ~((0x80 >> 2) | (0x01 << 2));break;
+ 206   2          case 20 : LED_Dat = ~((0x80 >> 3) | (0x01 << 3));break;
+ 207   2          case 21 : LED_Dat = ~((0x80 >> 4) | (0x01 << 4));break;
+ 208   2          case 22 : LED_Dat = ~((0x80 >> 5) | (0x01 << 5));break;
+ 209   2          case 23 : LED_Dat = ~((0x80 >> 6) | (0x01 << 6));break;
+ 210   2          case 24 : LED_Dat = ~((0x80 >> 7) | (0x01 << 7));break;
+ 211   2        }
+ 212   1        if(stat >= 21)
+ 213   1          LED_State = 4;
+ 214   1        else if(stat >= 17)
+ 215   1          LED_State = 3;
+ 216   1        else if(stat >= 9)
+ 217   1          LED_State = 2;
+ 218   1        else
+ 219   1          LED_State = 1;
+ 220   1      }
+ 221          
+ 222          /*********************************************
+ 223                    利用定时器1控制LED亮度
+ 224          **********************************************/
+ 225          void Timer1Init(void)   //1毫秒@11.0592MHz
+ 226          {
+ 227   1        AUXR |= 0x40;   //定时器时钟1T模式
+ 228   1        TMOD &= 0x0F;   //设置定时器模式
+ 229   1        TMOD |= 0x10;   //设置定时器模式
+ 230   1        TL1 = 0xCD;   //设置定时初值
+ 231   1        TH1 = 0xD4;   //设置定时初值
+ 232   1        TF1 = 0;    //清除TF1标志
+ 233   1        TR1 = 1;    //定时器1开始计时
+ 234   1        EA = 1;
+ 235   1        ET1 = 1;
+C51 COMPILER V9.54   MAIN                                                                  01/11/2023 22:09:50 PAGE 5   
+
+ 236   1      }
+ 237          //void Timer1Init()   //1微秒@11.0592MHz
+ 238          //{
+ 239          //  AUXR |= 0x40;   //定时器时钟1T模式
+ 240          //  TMOD &= 0x0F;   //设置定时器模式
+ 241          //  TMOD |= 0x10;   //设置定时器模式
+ 242          //  TL1 = 0xF5;   //设置定时初值
+ 243          //  TH1 = 0xFF;   //设置定时初值
+ 244          //  TF1 = 0;    //清除TF1标志
+ 245          //  TR1 = 1;    //定时器1开始计时
+ 246          //  EA = 1;
+ 247          //  ET1 = 1;
+ 248          //}
+ 249          
+ 250          void Judgment_LED_Level()
+ 251          {
+ 252   1        unsigned char dat = Read_PCF8591();
+ 253   1        if( dat >= 192 )
+ 254   1          LED_Level = 4;
+ 255   1        else if(dat >= 128)
+ 256   1          LED_Level = 3;
+ 257   1        else if(dat >= 64)
+ 258   1          LED_Level = 2;
+ 259   1        else
+ 260   1          LED_Level = 1;
+ 261   1      }
+ 262          
+ 263          void Timer1_Routine() interrupt 3
+ 264          {
+ 265   1        TL1 = 0xCD;   //设置定时初值
+ 266   1        TH1 = 0xD4;   //设置定时初值
+ 267   1        Judgment_LED_Level();
+ 268   1        if (!LED_Lock)
+ 269   1          if( ++count_t1 >= (20 - (LED_Level * 5)) )
+ 270   1          {
+ 271   2            XBYTE[0x8000] = LED_Dat;
+ 272   2            if(count_t1 >= 20)
+ 273   2            {
+ 274   3              count_t1 = 0;
+ 275   3              XBYTE[0x8000] = 0xff;
+ 276   3              LED_Working();
+ 277   3            }
+ 278   2          }
+ 279   1      }
+ 280          
+ 281          /*********************************************
+ 282                        独立按键扫描函数
+ 283          **********************************************/
+ 284          void ScanKey()
+ 285          {
+ 286   1        if(P30 == 0) //S7
+ 287   1        {
+ 288   2          delay(100);
+ 289   2          if(P30 == 0)
+ 290   2          {
+ 291   3            LED_Lock = ~LED_Lock;
+ 292   3            while(!P30)
+ 293   3            {
+ 294   4              Display_Nixie();
+ 295   4            }
+ 296   3          }
+ 297   2        }
+C51 COMPILER V9.54   MAIN                                                                  01/11/2023 22:09:50 PAGE 6   
+
+ 298   1        if(P31 == 0) //S6
+ 299   1        {
+ 300   2          delay(100);
+ 301   2          if(P31 == 0)
+ 302   2          {
+ 303   3            if(Nixie_State == 0)
+ 304   3              Nixie_State = 1;
+ 305   3            else
+ 306   3              Nixie_State = 0;
+ 307   3            while(!P31)
+ 308   3            {
+ 309   4              Display_Nixie();
+ 310   4            }
+ 311   3          }
+ 312   2        }
+ 313   1        if(P32 == 0) //S5
+ 314   1        {
+ 315   2          delay(100);
+ 316   2          if(P32 == 0 && LED_t < 1200 && Nixie_State == 1)
+ 317   2          {
+ 318   3            LED_t += 100;
+ 319   3            Write_E2PROM(LED_t);
+ 320   3            delay(3000);                                          //！！！！！！！！！！！！！
+ 321   3            while(!P32)
+ 322   3            {
+ 323   4              Display_Nixie();
+ 324   4            }
+ 325   3          }
+ 326   2        }
+ 327   1        if(P33 == 0) //S4
+ 328   1        {
+ 329   2          delay(100);
+ 330   2          if(P33 == 0 && LED_t > 400 && Nixie_State == 1)
+ 331   2          {
+ 332   3            LED_t -= 100;
+ 333   3            Write_E2PROM(LED_t);
+ 334   3            delay(3000);                                          //！！！！！！！！！！！！！
+ 335   3            while(!P33)                                          //可简化
+ 336   3            {
+ 337   4              Display_Nixie();
+ 338   4            }
+ 339   3          }
+ 340   2          if(P33 == 0 && Nixie_State == 0)
+ 341   2          {
+ 342   3            Nixie_State = 2;
+ 343   3            while(!P33)                                          //可简化
+ 344   3            {
+ 345   4              Display_Nixie();
+ 346   4            }
+ 347   3            Nixie_State = 0;
+ 348   3          }
+ 349   2        }
+ 350   1      }
+ 351          
+ 352          void main()
+ 353          {
+ 354   1        Timer0Init();
+ 355   1        Timer1Init();
+ 356   1        InitSystem();
+ 357   1      //  LED_t = Read_E2PROM();
+ 358   1        while(1)
+ 359   1        {
+C51 COMPILER V9.54   MAIN                                                                  01/11/2023 22:09:50 PAGE 7   
+
+ 360   2          ScanKey();
+ 361   2          Display_Nixie();
+ 362   2        }
+ 363   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1123    ----
+   CONSTANT SIZE    =     16    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     12       3
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

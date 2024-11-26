@@ -1,0 +1,450 @@
+C51 COMPILER V9.54   MAIN                                                                  03/26/2023 16:00:05 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\main
+                    -.lst) TABS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include <STC15F2K60S2.H>
+   2          #include "iic.h"
+   3          
+   4          unsigned char code duanma_nixie[] = {0x3F,0x06,0x5B,0x4F,0x66,0x6D,0x7D,0x07,0x7F,0x6F,0x77,0x7C,0x39,0x5E
+             -,0x79,0x71};
+   5          unsigned char code duanma_nixie_dot[] = {0xBF,0x86,0xDB,0xCF,0xE6,0xED,0xFD,0x87,0xFF,0xEF,0x46};
+   6          unsigned int count_f = 0;//记录接收到的NE555波数
+   7          unsigned int f = 0;//记录NE555频率
+   8          unsigned char count_t = 0;//记录定时时间，直到满1s
+   9          unsigned char view = 1;//显示界面
+  10          unsigned int rd1 = 0 , rb2 = 0;//rd1、rb2电压值
+  11          unsigned char ain = 1;//采集电压通道数
+  12          unsigned int flash_rb2 = 0 , flash_f = 0;//缓存
+  13          unsigned char LEDswitch = 1;//LED开关
+  14          unsigned char LEDstate = 0xff;//记录LED状态
+  15          unsigned char count_t2 = 0; //T2计数
+  16          
+  17          void select_573(channel)
+  18          {
+  19   1        switch(channel)
+  20   1        {
+  21   2          case 4: P2 = (P2 & 0x1f) | 0x80;break;
+  22   2          case 5: P2 = (P2 & 0x1f) | 0xa0;break;
+  23   2          case 6: P2 = (P2 & 0x1f) | 0xc0;break;
+  24   2          case 7: P2 = (P2 & 0x1f) | 0xe0;break;
+  25   2        }
+  26   1      }
+  27          
+  28          void init_sys()
+  29          {
+  30   1        select_573(4);
+  31   1        P0 = 0xff;
+  32   1        select_573(5);
+  33   1        P0 = 0x00;
+  34   1        select_573(7);
+  35   1        P0 = 0xff;
+  36   1      }
+  37          
+  38          void delay_nixie(unsigned char t)
+  39          {
+  40   1        while(t--);
+  41   1      }
+  42          
+  43          void display_bit_nixie(unsigned char pos , unsigned char value)
+  44          {
+  45   1        select_573(6);
+  46   1        P0 = 0x01 << pos;
+  47   1        select_573(7);
+  48   1        P0 = value;
+  49   1        delay_nixie(500);
+  50   1        select_573(7);
+  51   1        P0 = 0xff;
+  52   1      }
+  53          
+C51 COMPILER V9.54   MAIN                                                                  03/26/2023 16:00:05 PAGE 2   
+
+  54          void init_t0()
+  55          {
+  56   1        AUXR &= 0x7F;   //定时器时钟12T模式
+  57   1        TMOD &= 0xF0;   //设置定时器模式
+  58   1        TMOD |= 0x04;
+  59   1        TL0 = 0xFF;   //设置定时初值
+  60   1        TH0 = 0xFF;   //设置定时初值
+  61   1        TF0 = 0;    //清除TF0标志
+  62   1        TR0 = 1;    //定时器0开始计时
+  63   1        EA = 1;
+  64   1        ET0 = 1;
+  65   1      }
+  66          
+  67          void t0_routine() interrupt 1
+  68          {
+  69   1        count_f++;
+  70   1      }
+  71          
+  72          void init_t1() //50ms
+  73          {
+  74   1        AUXR &= 0xBF;   //定时器时钟12T模式
+  75   1        TMOD &= 0x0F;   //设置定时器模式
+  76   1        TL1 = 0xB0;   //设置定时初值
+  77   1        TH1 = 0x3C;   //设置定时初值
+  78   1        TF1 = 0;    //清除TF1标志
+  79   1        TR1 = 1;    //定时器1开始计时
+  80   1        EA = 1;
+  81   1        ET1 = 1;
+  82   1      }
+  83          
+  84          void t1_routine() interrupt 3
+  85          {
+  86   1        if(++count_t == 20)
+  87   1        {
+  88   2          count_t = 0;
+  89   2          f = count_f;
+  90   2          count_f = 0;
+  91   2        }
+  92   1      }
+  93          
+  94          void display_nixie()
+  95          {
+  96   1        if(view == 1)
+  97   1        {
+  98   2          display_bit_nixie(0 , ~0x71);
+  99   2          display_bit_nixie(7 , ~duanma_nixie[f%10]);
+ 100   2          if(f>999999)
+ 101   2            display_bit_nixie(1 , ~duanma_nixie[f/1000000]);
+ 102   2          else
+ 103   2            display_bit_nixie(1 , 0xff);
+ 104   2          if(f>99999)
+ 105   2            display_bit_nixie(2 , ~duanma_nixie[f%1000000/100000]);
+ 106   2          else
+ 107   2            display_bit_nixie(2 , 0xff);
+ 108   2          if(f>9999)
+ 109   2            display_bit_nixie(3 , ~duanma_nixie[f%100000/10000]);
+ 110   2          else
+ 111   2            display_bit_nixie(3 , 0xff);
+ 112   2          if(f>999)
+ 113   2            display_bit_nixie(4 , ~duanma_nixie[f%10000/1000]);
+ 114   2          else
+ 115   2            display_bit_nixie(4 , 0xff);
+C51 COMPILER V9.54   MAIN                                                                  03/26/2023 16:00:05 PAGE 3   
+
+ 116   2          if(f>99)
+ 117   2            display_bit_nixie(5 , ~duanma_nixie[f%1000/100]);
+ 118   2          else
+ 119   2            display_bit_nixie(5 , 0xff);
+ 120   2          if(f>9)
+ 121   2            display_bit_nixie(6 , ~duanma_nixie[f%100/10]);
+ 122   2          else
+ 123   2            display_bit_nixie(6 , 0xff);
+ 124   2          select_573(6);
+ 125   2          P0 = 0xff;
+ 126   2          select_573(7);
+ 127   2          P2 = 0xff;
+ 128   2        }
+ 129   1        else if(view == 2)
+ 130   1        {
+ 131   2          display_bit_nixie(0 , 0xc8);
+ 132   2          display_bit_nixie(7 , ~duanma_nixie[(1000000/f)%10]);
+ 133   2          if((1000000/f)>999999)
+ 134   2            display_bit_nixie(1 , ~duanma_nixie[(1000000/f)/1000000]);
+ 135   2          else
+ 136   2            display_bit_nixie(1 , 0xff);
+ 137   2          if((1000000/f)>99999)
+ 138   2            display_bit_nixie(2 , ~duanma_nixie[(1000000/f)%1000000/100000]);
+ 139   2          else
+ 140   2            display_bit_nixie(2 , 0xff);
+ 141   2          if((1000000/f)>9999)
+ 142   2            display_bit_nixie(3 , ~duanma_nixie[(1000000/f)%100000/10000]);
+ 143   2          else
+ 144   2            display_bit_nixie(3 , 0xff);
+ 145   2          if((1000000/f)>999)
+ 146   2            display_bit_nixie(4 , ~duanma_nixie[(1000000/f)%10000/1000]);
+ 147   2          else
+ 148   2            display_bit_nixie(4 , 0xff);
+ 149   2          if((1000000/f)>99)
+ 150   2            display_bit_nixie(5 , ~duanma_nixie[(1000000/f)%1000/100]);
+ 151   2          else
+ 152   2            display_bit_nixie(5 , 0xff);
+ 153   2          if((1000000/f)>9)
+ 154   2            display_bit_nixie(6 , ~duanma_nixie[(1000000/f)%100/10]);
+ 155   2          else
+ 156   2            display_bit_nixie(6 , 0xff);
+ 157   2          select_573(6);
+ 158   2          P0 = 0xff;
+ 159   2          select_573(7);
+ 160   2          P2 = 0xff;
+ 161   2        }
+ 162   1        else
+ 163   1        {
+ 164   2          display_bit_nixie(0 , ~0x3E);
+ 165   2          display_bit_nixie(1 , 0xbf);
+ 166   2          display_bit_nixie(2 , ~duanma_nixie[ain]);
+ 167   2          display_bit_nixie(3 , 0xff);
+ 168   2          display_bit_nixie(4 , 0xff);
+ 169   2          if(ain == 1)
+ 170   2          {
+ 171   3            display_bit_nixie(5 , ~duanma_nixie_dot[rd1 / 100]);
+ 172   3            display_bit_nixie(6 , ~duanma_nixie[rd1 % 100 / 10]);
+ 173   3            display_bit_nixie(7 , ~duanma_nixie[rd1 % 10]);
+ 174   3          }
+ 175   2          else
+ 176   2          {
+ 177   3            display_bit_nixie(5 , ~duanma_nixie_dot[rb2 / 100]);
+C51 COMPILER V9.54   MAIN                                                                  03/26/2023 16:00:05 PAGE 4   
+
+ 178   3            display_bit_nixie(6 , ~duanma_nixie[rb2 % 100 / 10]);
+ 179   3            display_bit_nixie(7 , ~duanma_nixie[rb2 % 10]);
+ 180   3          }
+ 181   2          select_573(6);
+ 182   2          P0 = 0xff;
+ 183   2          select_573(7);
+ 184   2          P2 = 0xff;
+ 185   2        }
+ 186   1      }
+ 187          
+ 188          void read_rd1()
+ 189          {
+ 190   1        IIC_Start();
+ 191   1        IIC_SendByte(0x90); 
+ 192   1        IIC_WaitAck();
+ 193   1        IIC_SendByte(0x03); 
+ 194   1        IIC_WaitAck();
+ 195   1        IIC_Stop();
+ 196   1        
+ 197   1        IIC_Start();
+ 198   1        IIC_SendByte(0x91); 
+ 199   1        IIC_WaitAck();
+ 200   1        rd1 = IIC_RecByte();
+ 201   1        rd1 = (rd1 * (5.0 / 255)) * 100;
+ 202   1        IIC_SendAck(1);
+ 203   1        IIC_Stop();
+ 204   1      }
+ 205          
+ 206          void read_rb2()
+ 207          {
+ 208   1        IIC_Start();
+ 209   1        IIC_SendByte(0x90); 
+ 210   1        IIC_WaitAck();
+ 211   1        IIC_SendByte(0x01); 
+ 212   1        IIC_WaitAck();
+ 213   1        IIC_Stop();
+ 214   1        
+ 215   1        IIC_Start();
+ 216   1        IIC_SendByte(0x91); 
+ 217   1        IIC_WaitAck();
+ 218   1        rb2 = IIC_RecByte();
+ 219   1        rb2 = (rb2 * (5.0 / 255)) * 100;
+ 220   1        IIC_SendAck(1);
+ 221   1        IIC_Stop();
+ 222   1      }
+ 223          
+ 224          void delay_key(unsigned char t)
+ 225          {
+ 226   1        while(t--);
+ 227   1      }
+ 228          
+ 229          void LEDworking()
+ 230          {
+ 231   1        if(!LEDswitch)
+ 232   1        {
+ 233   2          select_573(4);
+ 234   2          P0 = 0xff;
+ 235   2        }
+ 236   1        else
+ 237   1        {
+ 238   2          if(rb2 > flash_rb2)
+ 239   2          {
+C51 COMPILER V9.54   MAIN                                                                  03/26/2023 16:00:05 PAGE 5   
+
+ 240   3            LEDstate &= 0xfe;
+ 241   3            select_573(4);
+ 242   3            P0 =LEDstate;
+ 243   3          }
+ 244   2          else
+ 245   2          {
+ 246   3            LEDstate |= 0x01;
+ 247   3            select_573(4);
+ 248   3            P0 =LEDstate;
+ 249   3          }
+ 250   2          if(f > flash_f)
+ 251   2          {
+ 252   3            LEDstate &= 0xfd;
+ 253   3            select_573(4);
+ 254   3            P0 =LEDstate;
+ 255   3          }
+ 256   2          else
+ 257   2          {
+ 258   3            LEDstate |= 0x02;
+ 259   3            select_573(4);
+ 260   3            P0 =LEDstate;
+ 261   3          }
+ 262   2          if(view == 1)
+ 263   2          {
+ 264   3            LEDstate &= 0xfb;
+ 265   3            select_573(4);
+ 266   3            P0 =LEDstate;
+ 267   3          }
+ 268   2          else
+ 269   2          {
+ 270   3            LEDstate |= 0x04;
+ 271   3            select_573(4);
+ 272   3            P0 =LEDstate;
+ 273   3          }
+ 274   2          if(view == 2)
+ 275   2          {
+ 276   3            LEDstate &= 0xf7;
+ 277   3            select_573(4);
+ 278   3            P0 =LEDstate;
+ 279   3          }
+ 280   2          else
+ 281   2          {
+ 282   3            LEDstate |= 0x08;
+ 283   3            select_573(4);
+ 284   3            P0 =LEDstate;
+ 285   3          }
+ 286   2          if(view == 3)
+ 287   2          {
+ 288   3            LEDstate &= 0xef;
+ 289   3            select_573(4);
+ 290   3            P0 =LEDstate;
+ 291   3          }
+ 292   2          else
+ 293   2          {
+ 294   3            LEDstate |= 0x10;
+ 295   3            select_573(4);
+ 296   3            P0 =LEDstate;
+ 297   3          }
+ 298   2        }
+ 299   1      }
+ 300          
+ 301          void Timer2Init()   //50毫秒@12.000MHz
+C51 COMPILER V9.54   MAIN                                                                  03/26/2023 16:00:05 PAGE 6   
+
+ 302          {
+ 303   1        AUXR &= 0xFB;   //定时器时钟12T模式
+ 304   1        T2L = 0xB0;   //设置定时初值
+ 305   1        T2H = 0x3C;   //设置定时初值
+ 306   1        AUXR &= 0xef;   //定时器2暂不计时
+ 307   1        IE2 = 0x04;
+ 308   1      }
+ 309          
+ 310          void t2_routine() interrupt 12
+ 311          {
+ 312   1        if(++count_t2 == 20)
+ 313   1          LEDswitch = !LEDswitch;
+ 314   1      }
+ 315          
+ 316          void scankey()
+ 317          {
+ 318   1        if(P33 == 0)                 //s4
+ 319   1        {
+ 320   2          delay_key(100);
+ 321   2          if(P33 == 0)
+ 322   2          {
+ 323   3            if(view == 1)
+ 324   3              view = 2;
+ 325   3            else if(view == 2)
+ 326   3              view = 3;
+ 327   3            else
+ 328   3            {
+ 329   4              view = 1;
+ 330   4              ain = 1;
+ 331   4            }
+ 332   3            while(P33 == 0)
+ 333   3            {
+ 334   4              display_nixie();
+ 335   4              read_rd1();
+ 336   4              read_rb2();
+ 337   4              LEDworking();
+ 338   4            }
+ 339   3          }
+ 340   2        }
+ 341   1        if(P32 == 0)                 //s5
+ 342   1        {
+ 343   2          delay_key(100);
+ 344   2          if(P32 == 0)
+ 345   2          {
+ 346   3            if(view == 3)
+ 347   3            {
+ 348   4              if(ain == 1)
+ 349   4                ain = 3;
+ 350   4              else
+ 351   4                ain = 1;
+ 352   4            }
+ 353   3            while(P32 == 0)
+ 354   3            {
+ 355   4              display_nixie();
+ 356   4              read_rd1();
+ 357   4              read_rb2();
+ 358   4              LEDworking();
+ 359   4            }
+ 360   3          }
+ 361   2        }
+ 362   1        if(P31 == 0)                 //s6
+ 363   1        {
+C51 COMPILER V9.54   MAIN                                                                  03/26/2023 16:00:05 PAGE 7   
+
+ 364   2          delay_key(100);
+ 365   2          if(P31 == 0)
+ 366   2          {
+ 367   3            flash_rb2 = rb2 ;
+ 368   3            while(P31 == 0)
+ 369   3            {
+ 370   4              display_nixie();
+ 371   4              read_rd1();
+ 372   4              read_rb2();
+ 373   4              LEDworking();
+ 374   4            }
+ 375   3          }
+ 376   2        }
+ 377   1        if(P30 == 0)                 //s7
+ 378   1        {
+ 379   2          delay_key(100);
+ 380   2          if(P30 == 0)
+ 381   2          {
+ 382   3            flash_f = f ;
+ 383   3            while(P30 == 0)
+ 384   3            {
+ 385   4              AUXR |= 0x10;   //定时器2开始计时
+ 386   4              display_nixie();
+ 387   4              read_rd1();
+ 388   4              read_rb2();
+ 389   4              LEDworking();
+ 390   4            }
+ 391   3            AUXR &= 0xef;   //定时器2停止
+ 392   3            count_t2 = 0;
+ 393   3            T2L = 0xB0;   //设置定时初值
+ 394   3            T2H = 0x3C;   //设置定时初值
+ 395   3          }
+ 396   2        }
+ 397   1      }
+ 398          
+ 399          void main()
+ 400          {
+ 401   1        init_sys();
+ 402   1        init_t0();
+ 403   1        init_t1();
+ 404   1        Timer2Init();
+ 405   1        while(1)
+ 406   1        {
+ 407   2          display_nixie();
+ 408   2          read_rd1();
+ 409   2          read_rb2();
+ 410   2          scankey();
+ 411   2          LEDworking();
+ 412   2        }
+ 413   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   2080    ----
+   CONSTANT SIZE    =     27    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     18    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

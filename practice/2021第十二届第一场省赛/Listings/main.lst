@@ -1,0 +1,335 @@
+C51 COMPILER V9.54   MAIN                                                                  03/20/2023 22:42:13 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\main
+                    -.lst) TABS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include <STC15F2K60S2.H>
+   2          #include "iic.h"
+   3          #include "onewire.h"
+   4          
+   5          unsigned char code duanma_nixie[] = {0x3F,0x06,0x5B,0x4F,0x66,0x6D,0x7D,0x07,0x7F,0x6F,0x77,0x7C,0x39,0x5E
+             -,0x79,0x71};
+   6          unsigned char code duanma_nixie_dot[] = {0xBF,0x86,0xDB,0xCF,0xE6,0xED,0xFD,0x87,0xFF,0xEF,0x46};
+   7          unsigned int temp = 0;//温度
+   8          unsigned char view = 1;//页面
+   9          unsigned char param = 25;//温度参数
+  10          unsigned char vad = 0;//DAC输出的电压值
+  11          unsigned char mode = 1;//模式
+  12          int add = 0;//累加计数，用于实现“等待退出参数页面后参数才生效”的效果
+  13          unsigned char LED_state = 0xff;//记录LED状态
+  14          
+  15          void select_573(unsigned char channel)
+  16          {
+  17   1        switch(channel)
+  18   1        {
+  19   2          case 4: P2 = (P2 & 0x1f) | 0x80;break;
+  20   2          case 5: P2 = (P2 & 0x1f) | 0xa0;break;
+  21   2          case 6: P2 = (P2 & 0x1f) | 0xc0;break;
+  22   2          case 7: P2 = (P2 & 0x1f) | 0xe0;break;
+  23   2        }
+  24   1      }
+  25          
+  26          void init_sys()
+  27          {
+  28   1        select_573(4);
+  29   1        P0 = 0xff;
+  30   1        select_573(5);
+  31   1        P0 = 0x00;
+  32   1        select_573(7);
+  33   1        P0 = 0xff;
+  34   1      }
+  35          
+  36          void delay_nixie(unsigned char t)
+  37          {
+  38   1        while(t--);
+  39   1      }
+  40          
+  41          void display_bit_nixie(unsigned char pos , unsigned char value)
+  42          {
+  43   1        select_573(7);
+  44   1        P0 = 0xff;
+  45   1        select_573(6);
+  46   1        P0 = 0x01 << pos;
+  47   1        select_573(7);
+  48   1        P0 = value;
+  49   1        delay_nixie(500);
+  50   1      }
+  51          
+  52          void read_18b20()
+  53          {
+C51 COMPILER V9.54   MAIN                                                                  03/20/2023 22:42:13 PAGE 2   
+
+  54   1        unsigned char LSB = 0 , MSB = 0;
+  55   1        init_ds18b20();
+  56   1        Write_DS18B20(0xcc);
+  57   1        Write_DS18B20(0x44);
+  58   1        
+  59   1        init_ds18b20();
+  60   1        Write_DS18B20(0xcc);
+  61   1        Write_DS18B20(0xbe);
+  62   1        
+  63   1        LSB = Read_DS18B20();
+  64   1        MSB = Read_DS18B20();
+  65   1        init_ds18b20();
+  66   1        
+  67   1        temp = MSB;
+  68   1        temp = (temp << 8) | LSB;
+  69   1        
+  70   1        temp = ((temp >> 4) * 100) + ((LSB & 0x0f) * 6.25);
+  71   1      }
+  72          
+  73          void display_nixie()
+  74          {
+  75   1        if(view == 1)
+  76   1        {
+  77   2          display_bit_nixie(0 , ~0x39);
+  78   2          display_bit_nixie(1 , 0xff);
+  79   2          display_bit_nixie(2 , 0xff);
+  80   2          display_bit_nixie(3 , 0xff);
+  81   2          display_bit_nixie(4 , ~duanma_nixie[temp / 1000]);
+  82   2          display_bit_nixie(5 , ~duanma_nixie_dot[(temp % 1000) / 100]);
+  83   2          display_bit_nixie(6 , ~duanma_nixie[(temp % 100) / 10]);
+  84   2          display_bit_nixie(7 , ~duanma_nixie[temp % 10]);
+  85   2          select_573(7);
+  86   2          P0 = 0xff;
+  87   2        }
+  88   1        else if(view == 2)
+  89   1        {
+  90   2          display_bit_nixie(0 , ~0x73);
+  91   2          display_bit_nixie(1 , 0xff);
+  92   2          display_bit_nixie(2 , 0xff);
+  93   2          display_bit_nixie(3 , 0xff);
+  94   2          display_bit_nixie(4 , 0xff);
+  95   2          display_bit_nixie(5 , 0xff);
+  96   2          display_bit_nixie(6 , ~duanma_nixie[(param + add) / 10]);
+  97   2          display_bit_nixie(7 , ~duanma_nixie[(param + add) % 10]);
+  98   2          select_573(7);
+  99   2          P0 = 0xff;
+ 100   2        }
+ 101   1        else
+ 102   1        {
+ 103   2          display_bit_nixie(0 , ~0x77);
+ 104   2          display_bit_nixie(1 , 0xff);
+ 105   2          display_bit_nixie(2 , 0xff);
+ 106   2          display_bit_nixie(3 , 0xff);
+ 107   2          display_bit_nixie(4 , 0xff);
+ 108   2          display_bit_nixie(5 , ~duanma_nixie_dot[vad / 100]);
+ 109   2          display_bit_nixie(6 , ~duanma_nixie[(vad % 100) / 10]);
+ 110   2          display_bit_nixie(7 , ~duanma_nixie[vad % 10]);
+ 111   2          select_573(7);
+ 112   2          P0 = 0xff;
+ 113   2        }
+ 114   1      }
+ 115          
+C51 COMPILER V9.54   MAIN                                                                  03/20/2023 22:42:13 PAGE 3   
+
+ 116          void dac()
+ 117          {
+ 118   1        IIC_Start();
+ 119   1        IIC_SendByte(0x90);
+ 120   1        IIC_WaitAck();
+ 121   1        IIC_SendByte(0x40);
+ 122   1        IIC_WaitAck();
+ 123   1        if(mode == 1)
+ 124   1        {
+ 125   2          if(temp < param)
+ 126   2            IIC_SendByte(0);
+ 127   2          else
+ 128   2            IIC_SendByte(255);
+ 129   2        }
+ 130   1        else
+ 131   1        {
+ 132   2          if(temp <= 2000)
+ 133   2            IIC_SendByte(51);
+ 134   2          else if(temp > 4000)
+ 135   2            IIC_SendByte(4 * 51);
+ 136   2          else
+ 137   2            IIC_SendByte((((3 * 51) / 2000) * temp) - (2 * 51));
+ 138   2        }
+ 139   1        IIC_WaitAck();
+ 140   1        IIC_Stop();
+ 141   1      }
+ 142          
+ 143          void LEDworking()
+ 144          {
+ 145   1        if(mode == 1)
+ 146   1        {
+ 147   2          select_573(4);
+ 148   2          P0 = LED_state;
+ 149   2          P00 = 0;
+ 150   2          LED_state = P0;
+ 151   2        }
+ 152   1        else
+ 153   1        {
+ 154   2          select_573(4);
+ 155   2          P0 = LED_state;
+ 156   2          P00 = 1;
+ 157   2          LED_state = P0;
+ 158   2        }
+ 159   1        if(view == 1)
+ 160   1        {
+ 161   2          select_573(4);
+ 162   2          P0 = LED_state;
+ 163   2          P01 = 0;
+ 164   2          LED_state = P0;
+ 165   2        }
+ 166   1        else
+ 167   1        {
+ 168   2          select_573(4);
+ 169   2          P0 = LED_state;
+ 170   2          P01 = 1;
+ 171   2          LED_state = P0;
+ 172   2        }
+ 173   1        if(view == 2)
+ 174   1        {
+ 175   2          select_573(4);
+ 176   2          P0 = LED_state;
+ 177   2          P02 = 0;
+C51 COMPILER V9.54   MAIN                                                                  03/20/2023 22:42:13 PAGE 4   
+
+ 178   2          LED_state = P0;
+ 179   2        }
+ 180   1        else
+ 181   1        {
+ 182   2          select_573(4);
+ 183   2          P0 = LED_state;
+ 184   2          P02 = 1;
+ 185   2          LED_state = P0;
+ 186   2        }
+ 187   1        if(view == 3)
+ 188   1        {
+ 189   2          select_573(4);
+ 190   2          P0 = LED_state;
+ 191   2          P03 = 0;
+ 192   2          LED_state = P0;
+ 193   2        }
+ 194   1        else
+ 195   1        {
+ 196   2          select_573(4);
+ 197   2          P0 = LED_state;
+ 198   2          P03 = 1;
+ 199   2          LED_state = P0;
+ 200   2        }
+ 201   1      }
+ 202          
+ 203          void scan_key()
+ 204          {
+ 205   1        P44 = 0;
+ 206   1        P42 = P33 = P32 = 1;
+ 207   1        if(P33 == 0)              //S4
+ 208   1        {
+ 209   2          delay_nixie(100);
+ 210   2          if(P33 == 0)
+ 211   2          {
+ 212   3            if(view == 1)
+ 213   3              view = 2;
+ 214   3            else if(view == 2)
+ 215   3            {
+ 216   4              view = 3;
+ 217   4              param += add;
+ 218   4            }
+ 219   3            else
+ 220   3              view = 1;
+ 221   3            while(P33 == 0)
+ 222   3            {
+ 223   4              read_18b20();
+ 224   4              display_nixie();
+ 225   4              dac();
+ 226   4              LEDworking();
+ 227   4            }
+ 228   3          }
+ 229   2        }
+ 230   1        if(P32 == 0)              //S5
+ 231   1        {
+ 232   2          delay_nixie(100);
+ 233   2          if(P32 == 0)
+ 234   2          {
+ 235   3            if(mode == 1)
+ 236   3              mode = 2;
+ 237   3            else
+ 238   3              mode = 1;
+ 239   3            while(P32 == 0)
+C51 COMPILER V9.54   MAIN                                                                  03/20/2023 22:42:13 PAGE 5   
+
+ 240   3            {
+ 241   4              read_18b20();
+ 242   4              display_nixie();
+ 243   4              dac();
+ 244   4              LEDworking();
+ 245   4            }
+ 246   3          }
+ 247   2        }
+ 248   1        
+ 249   1        P42 = 0;
+ 250   1        P44 = P33 = P32 = 1;
+ 251   1        if(P33 == 0)              //S8
+ 252   1        {
+ 253   2          delay_nixie(100);
+ 254   2          if(P33 == 0)
+ 255   2          {
+ 256   3            if(view == 2)
+ 257   3            {
+ 258   4              add--;
+ 259   4            }
+ 260   3            while(P33 == 0)
+ 261   3            {
+ 262   4              read_18b20();
+ 263   4              display_nixie();
+ 264   4              dac();
+ 265   4              LEDworking();
+ 266   4            }
+ 267   3          }
+ 268   2        }
+ 269   1        if(P32 == 0)              //S9
+ 270   1        {
+ 271   2          delay_nixie(100);
+ 272   2          if(P32 == 0)
+ 273   2          {
+ 274   3            if(view == 2)
+ 275   3            {
+ 276   4              add++;
+ 277   4            }
+ 278   3            while(P32 == 0)
+ 279   3            {
+ 280   4              read_18b20();
+ 281   4              display_nixie();
+ 282   4              dac();
+ 283   4              LEDworking();
+ 284   4            }
+ 285   3          }
+ 286   2        }
+ 287   1      }
+ 288          
+ 289          void main()
+ 290          {
+ 291   1        init_sys();
+ 292   1        while(1)
+ 293   1        {
+ 294   2          read_18b20();
+ 295   2          display_nixie();
+ 296   2          scan_key();
+ 297   2          dac();
+ 298   2          LEDworking();
+ 299   2        }
+ 300   1      }
+
+C51 COMPILER V9.54   MAIN                                                                  03/20/2023 22:42:13 PAGE 6   
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1007    ----
+   CONSTANT SIZE    =     27    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      9       2
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

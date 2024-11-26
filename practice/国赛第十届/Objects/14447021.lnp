@@ -1,0 +1,5 @@
+".\Objects\14447021.obj",
+".\Objects\iic.obj",
+".\Objects\onewire.obj" 
+TO ".\Objects\14447021" 
+PRINT(".\Listings\14447021.m51") RAMSIZE(256) 

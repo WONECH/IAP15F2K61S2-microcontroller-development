@@ -1,0 +1,341 @@
+C51 COMPILER V9.54   MAIN                                                                  03/07/2023 22:39:57 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\main
+                    -.lst) TABS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include <STC15F2K60S2.H>
+   2          #include "iic.h"
+   3          #include "onewire.h"
+   4          
+   5          unsigned char code duanma_nixie[] = {0x3F,0x06,0x5B,0x4F,0x66,0x6D,0x7D,0x07,0x7F,0x6F,0x77,0x7C,0x39,0x5E
+             -,0x79,0x71};
+   6          unsigned int t = 0;
+   7          unsigned char view = 1;//页面，1为数据页面，2为参数页面
+   8          unsigned char param = 1;//选择要调整的参数，1为tmin，2为tmax
+   9          unsigned int tmax = 30;
+  10          unsigned int tmin = 20;
+  11          unsigned int flag1 = 0 , flag2 = 0;//参数加减标记，实现退出参数页面后调整的参数才生
+             -效的效果,flag1服务于tmin，flag2服务于tmax
+  12          unsigned char error1 = 0 , error2 = 0;//操作错误标志符，0为正常操作，1为错误操作。erro
+             -r1代表参数越界，error2代表参数逻辑错误，即tmax<tmin
+  13          
+  14          void select573(unsigned char y)
+  15          {
+  16   1        switch(y)
+  17   1        {
+  18   2          case 4 : P2 = (P2 & 0x1f) | 0x80 ; break ;
+  19   2          case 5 : P2 = (P2 & 0x1f) | 0xa0 ; break ;
+  20   2          case 6 : P2 = (P2 & 0x1f) | 0xc0 ; break ;
+  21   2          case 7 : P2 = (P2 & 0x1f) | 0xe0 ; break ;
+  22   2        }
+  23   1      }
+  24          
+  25          void initsys()
+  26          {
+  27   1        select573(4);
+  28   1        P0 = 0xff;
+  29   1        select573(5);
+  30   1        P0 = 0x00;
+  31   1        select573(7);
+  32   1        P0 = 0xff;
+  33   1      }
+  34          
+  35          void delay_nixie(unsigned int t)
+  36          {
+  37   1        while(t--);
+  38   1      }
+  39          
+  40          void display_bit_nixie(unsigned char pos , unsigned char value)
+  41          {
+  42   1        select573(7);
+  43   1        P0 = 0xff;
+  44   1        select573(6);
+  45   1        P0 = 0x01 << pos;
+  46   1        select573(7);
+  47   1        P0 = value;
+  48   1        delay_nixie(1500);
+  49   1      }
+  50          
+  51          void display_nixie()
+C51 COMPILER V9.54   MAIN                                                                  03/07/2023 22:39:57 PAGE 2   
+
+  52          {
+  53   1        if(view == 1)
+  54   1        {
+  55   2          display_bit_nixie(0 , ~0x39);
+  56   2          display_bit_nixie(1 , 0xff);
+  57   2          display_bit_nixie(2 , 0xff);
+  58   2          display_bit_nixie(3 , 0xff);
+  59   2          display_bit_nixie(4 , 0xff);
+  60   2          display_bit_nixie(5 , 0xff);
+  61   2          display_bit_nixie(6 , ~duanma_nixie[(t%100)/10]);
+  62   2          display_bit_nixie(7 , ~duanma_nixie[t%10]);
+  63   2          select573(7);
+  64   2          P0 = 0xff;  
+  65   2        }
+  66   1        else
+  67   1        {
+  68   2          display_bit_nixie(0 , ~0x73);
+  69   2          display_bit_nixie(1 , 0xff);
+  70   2          display_bit_nixie(2 , 0xff);
+  71   2          display_bit_nixie(3 , ~duanma_nixie[(tmax + flag2)/10]);
+  72   2          display_bit_nixie(4 , ~duanma_nixie[(tmax + flag2)%10]);
+  73   2          display_bit_nixie(5 , 0xff);
+  74   2          display_bit_nixie(6 , ~duanma_nixie[(tmin + flag1)/10]);
+  75   2          display_bit_nixie(7 , ~duanma_nixie[(tmin + flag1)%10]);
+  76   2          select573(7);
+  77   2          P0 = 0xff;
+  78   2        }
+  79   1      }
+  80          
+  81          void read_18b20()
+  82          {
+  83   1        unsigned char MSB , LSB;
+  84   1        
+  85   1        init_ds18b20();
+  86   1        Write_DS18B20(0xcc);
+  87   1        Write_DS18B20(0x44);
+  88   1        
+  89   1        init_ds18b20();
+  90   1        Write_DS18B20(0xcc);
+  91   1        Write_DS18B20(0xbe);
+  92   1        
+  93   1        LSB = Read_DS18B20();
+  94   1        MSB = Read_DS18B20();
+  95   1        init_ds18b20();
+  96   1        
+  97   1        t = MSB;
+  98   1        t = (t<<8) | LSB;
+  99   1        
+ 100   1        t = t>>4;
+ 101   1      }
+ 102          
+ 103          void scan_key()
+ 104          {
+ 105   1        if(P33 == 0)                //s4
+ 106   1        {
+ 107   2          delay_nixie(100);
+ 108   2          if(P33 == 0)
+ 109   2          {
+ 110   3            if(view == 1)
+ 111   3              view = 2;
+ 112   3            else
+ 113   3            {
+C51 COMPILER V9.54   MAIN                                                                  03/07/2023 22:39:57 PAGE 3   
+
+ 114   4              view = 1;
+ 115   4              if((tmin+ flag1)<=(tmax+flag2))
+ 116   4              {
+ 117   5                tmin = tmin + flag1;
+ 118   5                tmax = tmax + flag2;
+ 119   5              }
+ 120   4              flag1 = 0;
+ 121   4              flag2 = 0;
+ 122   4              error1 = 0;
+ 123   4              error2 = 0;
+ 124   4            }
+ 125   3            while(P33 == 0)
+ 126   3            {
+ 127   4              display_nixie();
+ 128   4            }
+ 129   3          }
+ 130   2        }
+ 131   1        
+ 132   1        if(P32 == 0)               //s5
+ 133   1        {
+ 134   2          delay_nixie(100);
+ 135   2          if(P32 == 0)
+ 136   2          {
+ 137   3            if(param == 1)
+ 138   3              param = 2;
+ 139   3            else
+ 140   3              param = 1;
+ 141   3            while(P32 == 0)
+ 142   3            {
+ 143   4              display_nixie();
+ 144   4            }
+ 145   3          }
+ 146   2        }
+ 147   1        
+ 148   1        if(P31 == 0)               //s6
+ 149   1        {
+ 150   2          delay_nixie(100);
+ 151   2          if(P31 == 0)
+ 152   2          {
+ 153   3            if(param == 1)
+ 154   3            {
+ 155   4              if((tmin + flag1) == 99)
+ 156   4              {
+ 157   5                error1 = 1;
+ 158   5              }
+ 159   4              else
+ 160   4              {
+ 161   5                error1 = 0;
+ 162   5                flag1++;
+ 163   5              }
+ 164   4            }
+ 165   3            else
+ 166   3            {
+ 167   4              if((tmax + flag2) == 99)
+ 168   4              {
+ 169   5                error1 = 1;
+ 170   5              }
+ 171   4              else
+ 172   4              {
+ 173   5                error1 = 0;
+ 174   5                flag2++;
+ 175   5              }
+C51 COMPILER V9.54   MAIN                                                                  03/07/2023 22:39:57 PAGE 4   
+
+ 176   4            }
+ 177   3            if((tmin + flag1)>(tmax + flag2))
+ 178   3              error2 = 1;
+ 179   3            else
+ 180   3              error2 = 0;
+ 181   3            while(P31 == 0)
+ 182   3            {
+ 183   4              display_nixie();
+ 184   4            }
+ 185   3          }
+ 186   2        }
+ 187   1      
+ 188   1          if(P30 == 0)               //s7
+ 189   1        {
+ 190   2          delay_nixie(100);
+ 191   2          if(P30 == 0)
+ 192   2          {
+ 193   3            if(param == 1)
+ 194   3            {
+ 195   4              if((tmin + flag1) == 0)
+ 196   4              {
+ 197   5                error1 = 1;
+ 198   5              }
+ 199   4              else
+ 200   4              {
+ 201   5                error1 = 0;
+ 202   5                flag1--;
+ 203   5              }
+ 204   4            }
+ 205   3            else
+ 206   3            {
+ 207   4              if((tmax + flag2) == 0)
+ 208   4              {
+ 209   5                error1 = 1;
+ 210   5              }
+ 211   4              else
+ 212   4              {
+ 213   5                error1 = 0;
+ 214   5                flag2--;
+ 215   5              }
+ 216   4            }
+ 217   3            if((tmin + flag1)>(tmax + flag2))
+ 218   3              error2 = 1;
+ 219   3            else
+ 220   3              error2 = 0;
+ 221   3            while(P30 == 0)
+ 222   3            {
+ 223   4              display_nixie();
+ 224   4            }
+ 225   3          }
+ 226   2        }
+ 227   1      }
+ 228          
+ 229          void LEDworking()
+ 230          {
+ 231   1        if(t>tmax)
+ 232   1        {
+ 233   2          select573(4);
+ 234   2          P0 &= 0xfe;
+ 235   2        }
+ 236   1        else
+ 237   1        {
+C51 COMPILER V9.54   MAIN                                                                  03/07/2023 22:39:57 PAGE 5   
+
+ 238   2          select573(4);
+ 239   2          P0 |= 0x01;
+ 240   2        }
+ 241   1        if(t<=tmax && t>=tmin)
+ 242   1        {
+ 243   2          select573(4);
+ 244   2          P0 &= 0xfd;
+ 245   2        }
+ 246   1        else
+ 247   1        {
+ 248   2          select573(4);
+ 249   2          P0 |= 0x02;
+ 250   2        }
+ 251   1        if(t<tmin)
+ 252   1        {
+ 253   2          select573(4);
+ 254   2          P0 &= 0xfb;
+ 255   2        }
+ 256   1        else
+ 257   1        {
+ 258   2          select573(4);
+ 259   2          P0 |= 0x04;
+ 260   2        }
+ 261   1        if(error1 == 1 || error2 == 1)
+ 262   1        {
+ 263   2          select573(4);
+ 264   2          P0 &= 0xf7;
+ 265   2        }
+ 266   1        else
+ 267   1        {
+ 268   2          select573(4);
+ 269   2          P0 |= 0x08;
+ 270   2        }
+ 271   1      }
+ 272          
+ 273          void write8591()
+ 274          {
+ 275   1        unsigned int dat = 0;
+ 276   1        
+ 277   1        IIC_Start(); 
+ 278   1        IIC_SendByte(0x90);
+ 279   1        IIC_WaitAck(); 
+ 280   1        IIC_SendByte(0x40);
+ 281   1        IIC_WaitAck(); 
+ 282   1        if(t>tmax)
+ 283   1          dat = 4 * 51;
+ 284   1        else if(t < tmin)
+ 285   1          dat = 2 * 51;
+ 286   1        else
+ 287   1          dat = 3 * 51;
+ 288   1        IIC_SendByte(dat);
+ 289   1        IIC_WaitAck();
+ 290   1        IIC_Stop();
+ 291   1      }
+ 292          
+ 293          void main()
+ 294          {
+ 295   1        initsys();
+ 296   1        while(1)
+ 297   1        {
+ 298   2          write8591();
+ 299   2          read_18b20();
+C51 COMPILER V9.54   MAIN                                                                  03/07/2023 22:39:57 PAGE 6   
+
+ 300   2          display_nixie();
+ 301   2          scan_key();
+ 302   2          LEDworking();
+ 303   2        }
+ 304   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1033    ----
+   CONSTANT SIZE    =     16    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     14       4
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
